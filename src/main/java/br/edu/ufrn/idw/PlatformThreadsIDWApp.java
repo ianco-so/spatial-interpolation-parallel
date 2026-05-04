@@ -1,9 +1,12 @@
 package br.edu.ufrn.idw;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Files;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -110,26 +113,122 @@ public final class PlatformThreadsIDWApp {
     }
 
     static List<Sensor> readSensors(Path inputFile) throws IOException {
+        try (FileChannel fileChannel = FileChannel.open(inputFile, StandardOpenOption.READ)) {
+            long fileSize = fileChannel.size();
+            if (fileSize == 0) {
+                return new ArrayList<>();
+            }
+
+            int numberOfChunks = Math.min(Runtime.getRuntime().availableProcessors(), 16);
+            long[] chunks = getFileSegments(fileChannel, numberOfChunks);
+
+            Thread[] readers = new Thread[chunks.length - 1];
+            @SuppressWarnings("unchecked")
+            List<Sensor>[] results = new ArrayList[chunks.length - 1];
+
+            for (int i = 0; i < chunks.length - 1; i++) {
+                final int chunkIdx = i;
+                final long chunkStart = chunks[i];
+                final long chunkEnd = chunks[i + 1];
+
+                readers[i] = Thread.ofPlatform().start(() -> {
+                    try {
+                        results[chunkIdx] = readChunk(fileChannel, chunkStart, chunkEnd);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            }
+
+            for (Thread reader : readers) {
+                try {
+                    reader.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Leitura de arquivo interrompida.", e);
+                }
+            }
+
+            List<Sensor> allSensors = new ArrayList<>();
+            for (List<Sensor> chunk : results) {
+                if (chunk != null) {
+                    allSensors.addAll(chunk);
+                }
+            }
+            return allSensors;
+        }
+    }
+
+    private static List<Sensor> readChunk(FileChannel fileChannel, long chunkStart, long chunkEnd) throws IOException {
+        int size = (int) (chunkEnd - chunkStart);
         List<Sensor> sensors = new ArrayList<>();
 
-        try (BufferedReader reader = Files.newBufferedReader(inputFile)) {
-            String line = reader.readLine();
-            if (line == null) {
-                return sensors;
-            }
+        ByteBuffer bb = fileChannel.map(MapMode.READ_ONLY, chunkStart, size);
+        int pos = 0;
+        int limit = bb.limit();
 
-            if (!looksLikeHeader(line)) {
-                sensors.add(parseSensor(line));
+        while (pos < limit) {
+            int lineStart = pos;
+            while (pos < limit && bb.get(pos) != '\n') {
+                pos++;
             }
-
-            while ((line = reader.readLine()) != null) {
-                if (!line.isBlank()) {
+            int lineEnd = pos;
+            int lineLength = lineEnd - lineStart;
+            if (lineLength > 0) {
+                byte[] bytes = new byte[lineLength];
+                bb.position(lineStart);
+                bb.get(bytes, 0, lineLength);
+                String line = new String(bytes, StandardCharsets.UTF_8).trim();
+                if (!line.isBlank() && !looksLikeHeader(line)) {
                     sensors.add(parseSensor(line));
                 }
             }
+            pos++;
         }
 
         return sensors;
+    }
+
+    private static long[] getFileSegments(FileChannel fileChannel, int numberOfChunks) throws IOException {
+        long fileSize = fileChannel.size();
+        long segmentSize = (fileSize + numberOfChunks - 1) / numberOfChunks;
+        long[] chunks = new long[numberOfChunks + 1];
+        chunks[0] = 0;
+
+        ByteBuffer probe = ByteBuffer.allocate(8192);
+
+        for (int i = 1; i < numberOfChunks; i++) {
+            long approx = i * segmentSize;
+            if (approx >= fileSize) {
+                chunks[i] = fileSize;
+                continue;
+            }
+
+            long pos = approx;
+            boolean found = false;
+            while (pos < fileSize) {
+                probe.clear();
+                int toRead = (int) Math.min(probe.capacity(), fileSize - pos);
+                probe.limit(toRead);
+                fileChannel.read(probe, pos);
+                probe.flip();
+                for (int j = 0; j < toRead; j++) {
+                    if (probe.get(j) == '\n') {
+                        chunks[i] = pos + j + 1;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
+                pos += toRead;
+            }
+            if (!found) {
+                chunks[i] = fileSize;
+            }
+        }
+
+        chunks[numberOfChunks] = fileSize;
+        return chunks;
     }
 
     private static double interpolateSequential(List<Sensor> sensors, double targetLat, double targetLon, double power) {

@@ -97,9 +97,9 @@ public final class SerialIDWApp {
     }
 
     static Sensor parseSensor(String line) {
-        int firstSeparator = line.indexOf(';');
-        int secondSeparator = line.indexOf(';', firstSeparator + 1);
-        int thirdSeparator = line.indexOf(';', secondSeparator + 1);
+        int firstSeparator =    line.indexOf(';');
+        int secondSeparator =   line.indexOf(';', firstSeparator + 1);
+        int thirdSeparator =    line.indexOf(';', secondSeparator + 1);
 
         if (firstSeparator < 0 || secondSeparator < 0 || thirdSeparator < 0) {
             throw new IllegalArgumentException("Linha de sensor invalida: " + line);
