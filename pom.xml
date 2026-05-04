@@ -24,6 +24,11 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+      <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.1.1</version>
@@ -35,6 +40,24 @@
             </goals>
             <configuration>
               <mainClass>br.edu.ufrn.dsgenerator.DatasetGenerator</mainClass>
+            </configuration>
+          </execution>
+          <execution>
+            <id>serial-idw</id>
+            <goals>
+              <goal>java</goal>
+            </goals>
+            <configuration>
+              <mainClass>br.edu.ufrn.idw.SerialIDWApp</mainClass>
+            </configuration>
+          </execution>
+          <execution>
+            <id>platform-idw</id>
+            <goals>
+              <goal>java</goal>
+            </goals>
+            <configuration>
+              <mainClass>br.edu.ufrn.idw.PlatformThreadsIDWApp</mainClass>
             </configuration>
           </execution>
         </executions>
