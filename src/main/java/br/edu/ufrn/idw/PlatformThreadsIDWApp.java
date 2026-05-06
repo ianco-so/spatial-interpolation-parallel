@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicReference;
+// import java.util.concurrent.atomic.AtomicReference;
 
 import br.edu.ufrn.utils.Utils.Sensor;
 import br.edu.ufrn.utils.Utils.InterpolatedTarget;
@@ -68,101 +68,79 @@ public final class PlatformThreadsIDWApp {
         }
     }
 
-    public static double interpolate(List<Sensor> sensors, double targetLat, double targetLon, double power) {
-        if (sensors.isEmpty()) {
-            throw new IllegalArgumentException("A lista de sensores nao pode estar vazia.");
-        }
-        if (power <= 0.0) {
-            throw new IllegalArgumentException("A potencia IDW precisa ser maior que zero.");
-        }
-
-        int workerCount = Math.min(Runtime.getRuntime().availableProcessors(), sensors.size());
-        if (workerCount <= 1) {
-            return interpolateSequential(sensors, targetLat, targetLon, power);
-        }
-
-        double[] partialWeightedTemperatureSums = new double[workerCount];
-        double[] partialWeightSums = new double[workerCount];
-        AtomicReference<Double> exactTemperature = new AtomicReference<>();
-        Thread[] workers = new Thread[workerCount];
-
-        int chunkSize = (sensors.size() + workerCount - 1) / workerCount;
-
-        for (int workerIndex = 0; workerIndex < workerCount; workerIndex++) {
-            final int slot = workerIndex;
-            final int fromIndex = workerIndex * chunkSize;
-            final int toIndex = Math.min(sensors.size(), fromIndex + chunkSize);
-
-            workers[workerIndex] = Thread.ofPlatform().start(() -> processChunk(
-                    sensors,
-                    fromIndex,
-                    toIndex,
-                    targetLat,
-                    targetLon,
-                    power,
-                    partialWeightedTemperatureSums,
-                    partialWeightSums,
-                    exactTemperature,
-                    slot
-            ));
-        }
-
-        for (Thread worker : workers) {
-            try {
-                worker.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("A interpolacao concorrente foi interrompida.", e);
-            }
-        }
-
-        Double exact = exactTemperature.get();
-        if (exact != null) {
-            return exact;
-        }
-
-        double weightedTemperatureSum = 0.0;
-        double weightSum = 0.0;
-
-        for (int i = 0; i < workerCount; i++) {
-            weightedTemperatureSum += partialWeightedTemperatureSums[i];
-            weightSum += partialWeightSums[i];
-        }
-
-        return weightedTemperatureSum / weightSum;
-    }
+    // public static double interpolate(List<Sensor> sensors, double targetLat, double targetLon, double power) {
+    //     if (sensors.isEmpty()) {
+    //         throw new IllegalArgumentException("A lista de sensores nao pode estar vazia.");
+    //     }
+    //     if (power <= 0.0) {
+    //         throw new IllegalArgumentException("A potencia IDW precisa ser maior que zero.");
+    //     }
+    //     int workerCount = Math.min(Runtime.getRuntime().availableProcessors(), sensors.size());
+    //     if (workerCount <= 1) {
+    //         return interpolateSequential(sensors, targetLat, targetLon, power);
+    //     }
+    //     double[] partialWeightedTemperatureSums = new double[workerCount];
+    //     double[] partialWeightSums = new double[workerCount];
+    //     AtomicReference<Double> exactTemperature = new AtomicReference<>();
+    //     Thread[] workers = new Thread[workerCount];
+    //     int chunkSize = (sensors.size() + workerCount - 1) / workerCount;
+    //     for (int workerIndex = 0; workerIndex < workerCount; workerIndex++) {
+    //         final int slot = workerIndex;
+    //         final int fromIndex = workerIndex * chunkSize;
+    //         final int toIndex = Math.min(sensors.size(), fromIndex + chunkSize);
+    //         workers[workerIndex] = Thread.ofPlatform().start(() -> processChunk(
+    //                 sensors,
+    //                 fromIndex,
+    //                 toIndex,
+    //                 targetLat,
+    //                 targetLon,
+    //                 power,
+    //                 partialWeightedTemperatureSums,
+    //                 partialWeightSums,
+    //                 exactTemperature,
+    //                 slot
+    //         ));
+    //     }
+    //     for (Thread worker : workers) {
+    //         try {
+    //             worker.join();
+    //         } catch (InterruptedException e) {
+    //             Thread.currentThread().interrupt();
+    //             throw new IllegalStateException("A interpolacao concorrente foi interrompida.", e);
+    //         }
+    //     }
+    //     Double exact = exactTemperature.get();
+    //     if (exact != null) {
+    //         return exact;
+    //     }
+    //     double weightedTemperatureSum = 0.0;
+    //     double weightSum = 0.0;
+    //     for (int i = 0; i < workerCount; i++) {
+    //         weightedTemperatureSum += partialWeightedTemperatureSums[i];
+    //         weightSum += partialWeightSums[i];
+    //     }
+    //     return weightedTemperatureSum / weightSum;
+    // }
 
     private static List<InterpolatedTarget> interpolateTargets(List<Sensor> sensors, List<Target> targets, double power) {
         if (targets.isEmpty()) {
             return Collections.emptyList();
         }
 
-        int workerCount = Runtime.getRuntime().availableProcessors();
+        var workerCount = targets.size();
+        var workers = new Thread[workerCount];
+        var results = new InterpolatedTarget[targets.size()];
 
-        int chunkSize = (targets.size() + workerCount - 1) / workerCount;
-        Thread[] workers = new Thread[workerCount];
-        @SuppressWarnings("unchecked")
-        List<InterpolatedTarget>[] partialResults = new ArrayList[workerCount];
-
-        for (int workerIndex = 0; workerIndex < workerCount; workerIndex++) {
-            final int slot = workerIndex;
-            final int fromIndex = workerIndex * chunkSize;
-            final int toIndex = Math.min(targets.size(), fromIndex + chunkSize);
-
-            workers[workerIndex] = Thread.ofPlatform().start(() -> {
-                List<InterpolatedTarget> chunkResults = new ArrayList<>(Math.max(0, toIndex - fromIndex));
-
-                for (int i = fromIndex; i < toIndex; i++) {
-                    Target target = targets.get(i);
-                    double temperature = interpolate(sensors, target.lat(), target.lon(), power);
-                    chunkResults.add(new InterpolatedTarget(target.id(), target.lat(), target.lon(), temperature));
-                }
-
-                partialResults[slot] = chunkResults;
+        for (var i = 0; i < workerCount; i++) {
+            final var idx = i;
+            workers[idx] = Thread.ofPlatform().start(() -> {
+                var target = targets.get(idx);
+                var temperature = interpolateSequential(sensors, target.lat(), target.lon(), power);
+                results[idx] = new InterpolatedTarget(target.id(), target.lat(), target.lon(), temperature);
             });
         }
 
-        for (Thread worker : workers) {
+        for (var worker : workers) {
             try {
                 worker.join();
             } catch (InterruptedException e) {
@@ -171,14 +149,7 @@ public final class PlatformThreadsIDWApp {
             }
         }
 
-        List<InterpolatedTarget> results = new ArrayList<>(targets.size());
-        for (List<InterpolatedTarget> chunkResults : partialResults) {
-            if (chunkResults != null) {
-                results.addAll(chunkResults);
-            }
-        }
-
-        return results;
+        return new ArrayList<>(java.util.Arrays.asList(results));
     }
 
     static List<Sensor> readSensors(Path inputFile) throws IOException {
@@ -313,39 +284,35 @@ public final class PlatformThreadsIDWApp {
         return weightedTemperatureSum / weightSum;
     }
 
-    private static void processChunk(
-            List<Sensor> sensors,
-            int fromIndex,
-            int toIndex,
-            double targetLat,
-            double targetLon,
-            double power,
-            double[] partialWeightedTemperatureSums,
-            double[] partialWeightSums,
-            AtomicReference<Double> exactTemperature,
-            int slot
-    ) {
-        double weightedTemperatureSum = 0.0;
-        double weightSum = 0.0;
-
-        for (int i = fromIndex; i < toIndex; i++) {
-            if (exactTemperature.get() != null) {
-                break;
-            }
-
-            Sensor sensor = sensors.get(i);
-            double distance = calculateDistance(sensor.lat(), sensor.lon(), targetLat, targetLon);
-            if (distance == 0.0) {
-                exactTemperature.compareAndSet(null, sensor.temp());
-                return;
-            }
-
-            double weight = 1.0 / Math.pow(distance, power);
-            weightedTemperatureSum += weight * sensor.temp();
-            weightSum += weight;
-        }
-
-        partialWeightedTemperatureSums[slot] = weightedTemperatureSum;
-        partialWeightSums[slot] = weightSum;
-    }
+    // private static void processChunk(
+    //         List<Sensor> sensors,
+    //         int fromIndex,
+    //         int toIndex,
+    //         double targetLat,
+    //         double targetLon,
+    //         double power,
+    //         double[] partialWeightedTemperatureSums,
+    //         double[] partialWeightSums,
+    //         AtomicReference<Double> exactTemperature,
+    //         int slot
+    // ) {
+    //     double weightedTemperatureSum = 0.0;
+    //     double weightSum = 0.0;
+    //     for (int i = fromIndex; i < toIndex; i++) {
+    //         if (exactTemperature.get() != null) {
+    //             break;
+    //         }
+    //         Sensor sensor = sensors.get(i);
+    //         double distance = calculateDistance(sensor.lat(), sensor.lon(), targetLat, targetLon);
+    //         if (distance == 0.0) {
+    //             exactTemperature.compareAndSet(null, sensor.temp());
+    //             return;
+    //         }
+    //         double weight = 1.0 / Math.pow(distance, power);
+    //         weightedTemperatureSum += weight * sensor.temp();
+    //         weightSum += weight;
+    //     }
+    //     partialWeightedTemperatureSums[slot] = weightedTemperatureSum;
+    //     partialWeightSums[slot] = weightSum;
+    // }
 }
