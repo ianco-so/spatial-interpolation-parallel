@@ -1,6 +1,5 @@
 package br.edu.ufrn.idw;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,28 +7,35 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-public final class SerialIDWApp {
+import static br.edu.ufrn.utils.Utils.Sensor;
 
-    private static final String DEFAULT_INPUT_FILE = "data/sensors_1gb.csv";
-    private static final double DEFAULT_TARGET_LAT = 0.0;
-    private static final double DEFAULT_TARGET_LON = 0.0;
-    private static final double DEFAULT_POWER = 2.0;
+import static br.edu.ufrn.utils.Utils.DEFAULT_INPUT_FILE;
+import static br.edu.ufrn.utils.Utils.DEFAULT_TARGET_LAT;
+import static br.edu.ufrn.utils.Utils.DEFAULT_TARGET_LON;
+import static br.edu.ufrn.utils.Utils.DEFAULT_POWER;
+import static br.edu.ufrn.utils.Utils.getStringArg;
+import static br.edu.ufrn.utils.Utils.getDoubleArg;
+import static br.edu.ufrn.utils.Utils.calculateDistance;
+import static br.edu.ufrn.utils.Utils.parseSensor;
+import static br.edu.ufrn.utils.Utils.looksLikeHeader;
+
+public final class SerialIDWApp {
 
     private SerialIDWApp() {
     }
 
     public static void main(String[] args) {
-        Path inputFile = Path.of(getStringArg(args, 0, DEFAULT_INPUT_FILE));
-        double targetLat = getDoubleArg(args, 1, DEFAULT_TARGET_LAT, "latitude");
-        double targetLon = getDoubleArg(args, 2, DEFAULT_TARGET_LON, "longitude");
-        double power = getDoubleArg(args, 3, DEFAULT_POWER, "power");
+        var inputFile   = Path.of(getStringArg(args, 0, DEFAULT_INPUT_FILE));
+        var targetLat   = getDoubleArg(args, 1, DEFAULT_TARGET_LAT, "latitude");
+        var targetLon   = getDoubleArg(args, 2, DEFAULT_TARGET_LON, "longitude");
+        var power       = getDoubleArg(args, 3, DEFAULT_POWER, "power");
 
-        long startNanos = System.nanoTime();
+        var startNanos = System.nanoTime();
 
         try {
-            List<Sensor> sensors = readSensors(inputFile);
-            double result = interpolate(sensors, targetLat, targetLon, power);
-            double elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000.0;
+            var sensors = readSensors(inputFile);
+            var result = interpolate(sensors, targetLat, targetLon, power);
+            var elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000.0;
 
             System.out.printf(Locale.US, "Modo: serial%n");
             System.out.printf(Locale.US, "Arquivo: %s%n", inputFile);
@@ -44,7 +50,7 @@ public final class SerialIDWApp {
         }
     }
 
-    public static double interpolate(List<Sensor> sensors, double targetLat, double targetLon, double power) {
+    private static double interpolate(List<Sensor> sensors, double targetLat, double targetLon, double power) {
         if (sensors.isEmpty()) {
             throw new IllegalArgumentException("A lista de sensores nao pode estar vazia.");
         }
@@ -52,16 +58,16 @@ public final class SerialIDWApp {
             throw new IllegalArgumentException("A potencia IDW precisa ser maior que zero.");
         }
 
-        double weightedTemperatureSum = 0.0;
-        double weightSum = 0.0;
+        var weightedTemperatureSum = 0.0;
+        var weightSum = 0.0;
 
-        for (Sensor sensor : sensors) {
-            double distance = distance(sensor.lat(), sensor.lon(), targetLat, targetLon);
+        for (var sensor : sensors) {
+            var distance = calculateDistance(sensor.lat(), sensor.lon(), targetLat, targetLon);
             if (distance == 0.0) {
                 return sensor.temp();
             }
 
-            double weight = 1.0 / Math.pow(distance, power);
+            var weight = 1.0 / Math.pow(distance, power);
             weightedTemperatureSum += weight * sensor.temp();
             weightSum += weight;
         }
@@ -69,11 +75,11 @@ public final class SerialIDWApp {
         return weightedTemperatureSum / weightSum;
     }
 
-    static List<Sensor> readSensors(Path inputFile) throws IOException {
+    private static List<Sensor> readSensors(Path inputFile) throws IOException {
         List<Sensor> sensors = new ArrayList<>();
 
-        try (BufferedReader reader = Files.newBufferedReader(inputFile)) {
-            String line = reader.readLine();
+        try (var reader = Files.newBufferedReader(inputFile)) {
+            var line = reader.readLine();
             if (line == null) {
                 return sensors;
             }
@@ -90,54 +96,5 @@ public final class SerialIDWApp {
         }
 
         return sensors;
-    }
-
-    private static boolean looksLikeHeader(String line) {
-        return line.trim().toLowerCase(Locale.ROOT).startsWith("id;");
-    }
-
-    static Sensor parseSensor(String line) {
-        int firstSeparator =    line.indexOf(';');
-        int secondSeparator =   line.indexOf(';', firstSeparator + 1);
-        int thirdSeparator =    line.indexOf(';', secondSeparator + 1);
-
-        if (firstSeparator < 0 || secondSeparator < 0 || thirdSeparator < 0) {
-            throw new IllegalArgumentException("Linha de sensor invalida: " + line);
-        }
-
-        long id = Long.parseLong(line.substring(0, firstSeparator).trim());
-        double lat = Double.parseDouble(line.substring(firstSeparator + 1, secondSeparator).trim());
-        double lon = Double.parseDouble(line.substring(secondSeparator + 1, thirdSeparator).trim());
-        double temp = Double.parseDouble(line.substring(thirdSeparator + 1).trim());
-
-        return new Sensor(id, lat, lon, temp);
-    }
-
-    private static double distance(double lat1, double lon1, double lat2, double lon2) {
-        double deltaLat = lat1 - lat2;
-        double deltaLon = lon1 - lon2;
-        return Math.sqrt(deltaLat * deltaLat + deltaLon * deltaLon);
-    }
-
-    private static String getStringArg(String[] args, int index, String defaultValue) {
-        if (args.length <= index || args[index].isBlank()) {
-            return defaultValue;
-        }
-        return args[index];
-    }
-
-    private static double getDoubleArg(String[] args, int index, double defaultValue, String label) {
-        if (args.length <= index || args[index].isBlank()) {
-            return defaultValue;
-        }
-
-        try {
-            return Double.parseDouble(args[index]);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Valor invalido para " + label + ": " + args[index], e);
-        }
-    }
-
-    public record Sensor(long id, double lat, double lon, double temp) {
     }
 }

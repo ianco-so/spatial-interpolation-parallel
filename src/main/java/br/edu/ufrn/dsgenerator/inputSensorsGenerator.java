@@ -23,12 +23,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author <a href="https://github.com/ianco-so">Ianco</a>
  * @version 1.0
  */
-public class DatasetGenerator {
+public class inputSensorsGenerator {
 
     /**
      * Caminho do arquivo de saída onde o dataset gerado será gravado.
      */
-    private static final Path MEASUREMENT_FILE = Path.of("./data/sensors_1gb.csv");
+    private static final Path MEASUREMENT_FILE = Path.of("./data/input_sensors.csv");
 
     /**
      * Estimativa do tamanho médio de uma linha em bytes, utilizada para calcular 

@@ -12,12 +12,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class PlatformThreadsIDWApp {
+import br.edu.ufrn.utils.Utils.Sensor;
 
-    private static final String DEFAULT_INPUT_FILE = "data/sensors_1gb.csv";
-    private static final double DEFAULT_TARGET_LAT = 0.0;
-    private static final double DEFAULT_TARGET_LON = 0.0;
-    private static final double DEFAULT_POWER = 2.0;
+import static br.edu.ufrn.utils.Utils.DEFAULT_INPUT_FILE;
+import static br.edu.ufrn.utils.Utils.DEFAULT_TARGET_LAT;
+import static br.edu.ufrn.utils.Utils.DEFAULT_TARGET_LON;
+import static br.edu.ufrn.utils.Utils.DEFAULT_POWER;
+
+import static br.edu.ufrn.utils.Utils.getStringArg;
+import static br.edu.ufrn.utils.Utils.getDoubleArg;
+import static br.edu.ufrn.utils.Utils.calculateDistance;
+import static br.edu.ufrn.utils.Utils.parseSensor;
+import static br.edu.ufrn.utils.Utils.looksLikeHeader;
+
+
+public final class PlatformThreadsIDWApp {
 
     private PlatformThreadsIDWApp() {
     }
@@ -114,15 +123,15 @@ public final class PlatformThreadsIDWApp {
 
     static List<Sensor> readSensors(Path inputFile) throws IOException {
         try (FileChannel fileChannel = FileChannel.open(inputFile, StandardOpenOption.READ)) {
-            long fileSize = fileChannel.size();
+            var fileSize = fileChannel.size();
             if (fileSize == 0) {
                 return new ArrayList<>();
             }
 
-            int numberOfChunks = Math.min(Runtime.getRuntime().availableProcessors(), 16);
-            long[] chunks = getFileSegments(fileChannel, numberOfChunks);
+            var numberOfChunks = Runtime.getRuntime().availableProcessors();
+            var chunks = getFileSegments(fileChannel, numberOfChunks);
 
-            Thread[] readers = new Thread[chunks.length - 1];
+            var readers = new Thread[chunks.length - 1];
             @SuppressWarnings("unchecked")
             List<Sensor>[] results = new ArrayList[chunks.length - 1];
 
@@ -236,7 +245,7 @@ public final class PlatformThreadsIDWApp {
         double weightSum = 0.0;
 
         for (Sensor sensor : sensors) {
-            double distance = distance(sensor.lat(), sensor.lon(), targetLat, targetLon);
+            double distance = calculateDistance(sensor.lat(), sensor.lon(), targetLat, targetLon);
             if (distance == 0.0) {
                 return sensor.temp();
             }
@@ -270,7 +279,7 @@ public final class PlatformThreadsIDWApp {
             }
 
             Sensor sensor = sensors.get(i);
-            double distance = distance(sensor.lat(), sensor.lon(), targetLat, targetLon);
+            double distance = calculateDistance(sensor.lat(), sensor.lon(), targetLat, targetLon);
             if (distance == 0.0) {
                 exactTemperature.compareAndSet(null, sensor.temp());
                 return;
@@ -283,54 +292,5 @@ public final class PlatformThreadsIDWApp {
 
         partialWeightedTemperatureSums[slot] = weightedTemperatureSum;
         partialWeightSums[slot] = weightSum;
-    }
-
-    private static boolean looksLikeHeader(String line) {
-        return line.trim().toLowerCase(Locale.ROOT).startsWith("id;");
-    }
-
-    static Sensor parseSensor(String line) {
-        int firstSeparator = line.indexOf(';');
-        int secondSeparator = line.indexOf(';', firstSeparator + 1);
-        int thirdSeparator = line.indexOf(';', secondSeparator + 1);
-
-        if (firstSeparator < 0 || secondSeparator < 0 || thirdSeparator < 0) {
-            throw new IllegalArgumentException("Linha de sensor invalida: " + line);
-        }
-
-        long id = Long.parseLong(line.substring(0, firstSeparator).trim());
-        double lat = Double.parseDouble(line.substring(firstSeparator + 1, secondSeparator).trim());
-        double lon = Double.parseDouble(line.substring(secondSeparator + 1, thirdSeparator).trim());
-        double temp = Double.parseDouble(line.substring(thirdSeparator + 1).trim());
-
-        return new Sensor(id, lat, lon, temp);
-    }
-
-    private static double distance(double lat1, double lon1, double lat2, double lon2) {
-        double deltaLat = lat1 - lat2;
-        double deltaLon = lon1 - lon2;
-        return Math.sqrt(deltaLat * deltaLat + deltaLon * deltaLon);
-    }
-
-    private static String getStringArg(String[] args, int index, String defaultValue) {
-        if (args.length <= index || args[index].isBlank()) {
-            return defaultValue;
-        }
-        return args[index];
-    }
-
-    private static double getDoubleArg(String[] args, int index, double defaultValue, String label) {
-        if (args.length <= index || args[index].isBlank()) {
-            return defaultValue;
-        }
-
-        try {
-            return Double.parseDouble(args[index]);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Valor invalido para " + label + ": " + args[index], e);
-        }
-    }
-
-    public record Sensor(long id, double lat, double lon, double temp) {
     }
 }
