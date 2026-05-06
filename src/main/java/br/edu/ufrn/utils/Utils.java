@@ -4,16 +4,19 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
 public class Utils {
-    public static final String DEFAULT_INPUT_FILE = "data/input_sensors.csv";
-    public static final String DEFAULT_TARGETS_FILE = "data/input_targets.csv";
-    public static final double DEFAULT_TARGET_LAT = 0.0;
-    public static final double DEFAULT_TARGET_LON = 0.0;
-    public static final double DEFAULT_POWER = 2.0;
+    public static final String DEFAULT_INPUT_FILE     = "data/input_sensors.csv";
+    public static final String DEFAULT_TARGETS_FILE   = "data/input_targets.csv";
+    public static final int    TARGET_PRINT_THRESHOLD = 500;
+    public static final double DEFAULT_TARGET_LAT     = 0.0;
+    public static final double DEFAULT_TARGET_LON     = 0.0;
+    public static final double DEFAULT_POWER          = 2.0;
 
     public static String getStringArg(String[] args, int index, String defaultValue) {
         if (args.length <= index || args[index].isBlank()) {
@@ -101,8 +104,50 @@ public class Utils {
         return line.trim().toLowerCase(Locale.ROOT).startsWith("id;");
     }
 
+    public static boolean shouldPrintTargetsInTerminal(int targetCount) {
+        return targetCount < TARGET_PRINT_THRESHOLD;
+    }
+
     public static String coordinateKey(double lat, double lon) {
         return String.format(Locale.US, "%.6f;%.6f", lat, lon);
+    }
+
+    public static List<Target> readTargets(Path targetFile) throws IOException {
+        List<Target> targets = new ArrayList<>();
+
+        try (BufferedReader reader = Files.newBufferedReader(targetFile)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank() || looksLikeHeader(line)) {
+                    continue;
+                }
+
+                String[] parts = line.split(";");
+                if (parts.length < 3) {
+                    throw new IllegalArgumentException("Linha de target invalida: " + line);
+                }
+
+                long id = Long.parseLong(parts[0].trim());
+                double lat = Double.parseDouble(parts[1].trim());
+                double lon = Double.parseDouble(parts[2].trim());
+                targets.add(new Target(id, lat, lon));
+            }
+        }
+
+        return targets;
+    }
+
+    public static void printInterpolatedTargets(List<InterpolatedTarget> targets) {
+        for (InterpolatedTarget target : targets) {
+            System.out.printf(
+                    Locale.US,
+                    "Target %d: lat=%.6f lon=%.6f temp=%.6f%n",
+                    target.id(),
+                    target.lat(),
+                    target.lon(),
+                    target.temperature()
+            );
+        }
     }
 
     public static Set<String> readTargetCoordinateKeys(Path targetFile) throws IOException {
@@ -131,6 +176,12 @@ public class Utils {
         }
 
         return targetKeys;
+    }
+
+    public record Target(long id, double lat, double lon) {
+    }
+
+    public record InterpolatedTarget(long id, double lat, double lon, double temperature) {
     }
 
     public record Sensor(long id, double lat, double lon, double temp) {
