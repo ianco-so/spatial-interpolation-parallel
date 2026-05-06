@@ -39,7 +39,16 @@
               <goal>java</goal>
             </goals>
             <configuration>
-              <mainClass>br.edu.ufrn.dsgenerator.inputSensorsGenerator</mainClass>
+              <mainClass>br.edu.ufrn.generator.inputSensorsGenerator</mainClass>
+            </configuration>
+          </execution>
+          <execution>
+            <id>targets-generate</id>
+            <goals>
+              <goal>java</goal>
+            </goals>
+            <configuration>
+              <mainClass>br.edu.ufrn.generator.TargetsGenerator</mainClass>
             </configuration>
           </execution>
           <execution>
