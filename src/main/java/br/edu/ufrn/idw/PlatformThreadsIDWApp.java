@@ -37,22 +37,22 @@ public final class PlatformThreadsIDWApp {
     }
 
     public static void main(String[] args) {
-        Path inputFile = Path.of(getStringArg(args, 0, DEFAULT_INPUT_FILE));
-        Path targetFile = Path.of(getStringArg(args, 1, DEFAULT_TARGETS_FILE));
-        double power = getDoubleArg(args, 2, DEFAULT_POWER, "power");
+        var inputFile = Path.of(getStringArg(args, 0, DEFAULT_INPUT_FILE));
+        var targetFile = Path.of(getStringArg(args, 1, DEFAULT_TARGETS_FILE));
+        var power = getDoubleArg(args, 2, DEFAULT_POWER, "power");
 
-        long startNanos = System.nanoTime();
+        var startNanos = System.nanoTime();
 
         try {
-            List<Sensor> sensors = readSensors(inputFile);
-            List<Target> targets = readTargets(targetFile);
-            List<InterpolatedTarget> results = interpolateTargets(sensors, targets, power);
+            var sensors = readSensors(inputFile);
+            var targets = readTargets(targetFile);
+            var results = interpolateTargets(sensors, targets, power);
 
             if (shouldPrintTargetsInTerminal(results.size())) {
                 printInterpolatedTargets(results);
             }
 
-            double elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000.0;
+            var elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000.0;
 
             System.out.printf(Locale.US, "Modo: platform-threads%n");
             System.out.printf(Locale.US, "Arquivo: %s%n", inputFile);
@@ -137,17 +137,7 @@ public final class PlatformThreadsIDWApp {
             return Collections.emptyList();
         }
 
-        int workerCount = Math.min(Runtime.getRuntime().availableProcessors(), targets.size());
-        if (workerCount <= 1) {
-            List<InterpolatedTarget> results = new ArrayList<>(targets.size());
-
-            for (Target target : targets) {
-                double temperature = interpolate(sensors, target.lat(), target.lon(), power);
-                results.add(new InterpolatedTarget(target.id(), target.lat(), target.lon(), temperature));
-            }
-
-            return results;
-        }
+        int workerCount = Runtime.getRuntime().availableProcessors();
 
         int chunkSize = (targets.size() + workerCount - 1) / workerCount;
         Thread[] workers = new Thread[workerCount];
@@ -193,11 +183,6 @@ public final class PlatformThreadsIDWApp {
 
     static List<Sensor> readSensors(Path inputFile) throws IOException {
         try (FileChannel fileChannel = FileChannel.open(inputFile, StandardOpenOption.READ)) {
-            var fileSize = fileChannel.size();
-            if (fileSize == 0) {
-                return new ArrayList<>();
-            }
-
             var numberOfChunks = Runtime.getRuntime().availableProcessors();
             var chunks = getFileSegments(fileChannel, numberOfChunks);
 
@@ -269,25 +254,25 @@ public final class PlatformThreadsIDWApp {
     }
 
     private static long[] getFileSegments(FileChannel fileChannel, int numberOfChunks) throws IOException {
-        long fileSize = fileChannel.size();
-        long segmentSize = (fileSize + numberOfChunks - 1) / numberOfChunks;
-        long[] chunks = new long[numberOfChunks + 1];
+        var fileSize = fileChannel.size();
+        var segmentSize = (fileSize + numberOfChunks - 1) / numberOfChunks;
+        var chunks = new long[numberOfChunks + 1];
         chunks[0] = 0;
 
-        ByteBuffer probe = ByteBuffer.allocate(8192);
+        var probe = ByteBuffer.allocate(8192);
 
         for (int i = 1; i < numberOfChunks; i++) {
-            long approx = i * segmentSize;
-            if (approx >= fileSize) {
+            var approxBorder = i * segmentSize;
+            if (approxBorder >= fileSize) {
                 chunks[i] = fileSize;
                 continue;
             }
 
-            long pos = approx;
-            boolean found = false;
+            var pos = approxBorder;
+            var found = false;
             while (pos < fileSize) {
                 probe.clear();
-                int toRead = (int) Math.min(probe.capacity(), fileSize - pos);
+                var toRead = (int) Math.min(probe.capacity(), fileSize - pos);
                 probe.limit(toRead);
                 fileChannel.read(probe, pos);
                 probe.flip();
