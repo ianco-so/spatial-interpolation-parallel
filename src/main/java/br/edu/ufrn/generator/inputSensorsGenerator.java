@@ -65,8 +65,8 @@ public class inputSensorsGenerator {
     public static void main(String[] args) {
         long start = System.currentTimeMillis();
         boolean considerTargets = getBooleanArg(args, 0, DEFAULT_CONSIDER_TARGETS, "considerar targets");
-        Path targetsFile = Path.of(getStringArg(args, 1, DEFAULT_TARGETS_FILE));
-        long totalRecords = getLongArg(args, 2, DEFAULT_TOTAL_RECORDS, "quantidade de registros");
+        long totalRecords = getLongArg(args, 1, DEFAULT_TOTAL_RECORDS, "quantidade de registros");
+        Path targetsFile = Path.of(getStringArg(args, 2, DEFAULT_TARGETS_FILE));
         Path measurementFile = Path.of(getStringArg(args, 3, MEASUREMENT_FILE.toString()));
         Set<String> targetKeys = Set.of();
 
