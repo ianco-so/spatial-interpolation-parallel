@@ -19,20 +19,98 @@ Following the standard Maven convention:
 ## :rocket: Getting Started
 
 ### Prerequisites
-* JDK 21
-* Apache Maven 3.x
+- JDK 25 or higher (to access the latest concurrency features).
+- Apache Maven 3.x
 
-### Installation & Build
+### Build
 ```bash
 # Clone the repository
-git clone [https://github.com/YOUR_USERNAME/spatial-interpolation-parallel.git](https://github.com/YOUR_USERNAME/spatial-interpolation-parallel.git)
+git clone <link>
 
-# Navigate to the folder
+# Enter the project
 cd spatial-interpolation-parallel
 
-# Build the project
+# Build (or compile) the project
 mvn clean package
+# or for a faster development compile:
+mvn -q -DskipTests compile
 ```
+
+### Usage overview
+This project currently exposes two application entry points (modes): the sequential implementation (`serial`) and the platform-threads implementation (`platform-threads`).
+
+The Maven `exec` executions available are:
+- `serial-idw` → runs the sequential main (`br.edu.ufrn.idw.SerialIDWApp`).
+- `platform-idw` → runs the platform-threads main (`br.edu.ufrn.idw.PlatformThreadsIDWApp`).
+- `targets-generate` → runs the `TargetsGenerator`.
+- `sensors-generate` → runs the `inputSensorsGenerator`.
+
+Below are concrete examples showing how to generate datasets and run each mode.
+
+### Generators (create input files)
+
+1) Generate targets (IDs with lat/lon)
+
+```
+# Generate 100 targets into data/targets.csv
+mvn -q exec:java@targets-generate -Dexec.args="100 data/targets.csv"
+```
+
+Notes:
+- Arguments for `TargetsGenerator` (in order): `targetCount` `outputFile`.
+
+2) Generate sensors (large measurement file)
+
+```
+# Generate ~1GB of sensor records into data/sensors_1gb.csv
+# Arguments (in order): considerTargets totalRecords targetsFile outputFile
+# Example: do not consider targets
+mvn -q exec:java@sensors-generate -Dexec.args="false 10737418 data/targets.csv data/sensors_1gb.csv"
+
+# Example: consider targets (targets must exist beforehand)
+mvn -q exec:java@sensors-generate -Dexec.args="true 10737418 data/targets.csv data/sensors_1gb.csv"
+```
+
+Important: if you pass `considerTargets=true`, the generator will try to avoid coordinates that match any target; therefore you must generate targets first. Also be aware there is additional CPU overhead when `considerTargets=true`, especially if the number of targets is large.
+
+### Running the applications
+
+Common argument order for both apps is: `inputFile targetFile power`.
+
+Examples:
+
+```
+# Run sequential implementation
+mvn -q exec:java@serial-idw -Dexec.args="data/sensors_1gb.csv data/targets.csv 2.0"
+
+# Run platform-threads implementation
+mvn -q exec:java@platform-idw -Dexec.args="data/sensors_1gb.csv data/targets.csv 2.0"
+```
+
+Replace `2.0` above with the desired IDW power parameter.
+
+### Benchmarking with hyperfine
+
+You can benchmark the two modes using `hyperfine`. Example comparing `serial` vs `platform-threads`:
+
+```bash
+hyperfine --warmup 3 \
+	'mvn -q exec:java@serial-idw -Dexec.args="data/sensors_1gb.csv data/targets.csv 2.0"' \
+	'mvn -q exec:java@platform-idw -Dexec.args="data/sensors_1gb.csv data/targets.csv 2.0"' \
+	--runs 5
+```
+
+Tips:
+- Use `--prepare` with `hyperfine` to warm the filesystem cache if you want to measure pure CPU interpolation (e.g. `--prepare "echo warming"`).
+- Start with smaller datasets when iterating locally to reduce wall-clock time.
+
+### Argument references (concise)
+- `TargetsGenerator`: `targetCount outputFile`
+- `inputSensorsGenerator`: `considerTargets totalRecords targetsFile outputFile` (if `considerTargets=true`, generate targets first)
+- `SerialIDWApp` / `PlatformThreadsIDWApp`: `inputFile targetFile power`
+
+---
+
 ## :bar_chart: Parallel Strategies Implemented
 - [ ] **Sequential**: Baseline for performance comparison.
 - [ ] **ExecutorService**: Thread pool-based task distribution.
